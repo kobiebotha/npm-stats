@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 
 const NPM_API_URL = 'https://api.npmjs.org'
+const DOCKER_HUB_API = 'https://hub.docker.com/v2/repositories'
 
 interface Project {
   id: string
@@ -26,6 +27,10 @@ interface RangeResponse {
   start: string
   end: string
   package: string
+}
+
+interface DockerPullResponse {
+  pull_count?: number
 }
 
 async function fetchNpmDownloads(
@@ -81,6 +86,66 @@ function subYears(date: Date, years: number): Date {
   return result
 }
 
+function parseDockerImage(image: string): { namespace: string; repository: string; tag?: string } | null {
+  const trimmed = image.trim()
+
+  try {
+    const url = new URL(trimmed)
+    if (url.hostname.includes('hub.docker.com')) {
+      const parts = url.pathname.split('/').filter(Boolean)
+      if (parts[0] === 'r' && parts.length >= 3) {
+        return {
+          namespace: parts[1],
+          repository: parts[2],
+          tag: url.searchParams.get('name') || undefined,
+        }
+      }
+    }
+  } catch {
+    // Not a URL.
+  }
+
+  const withoutDigest = trimmed.split('@')[0]
+  const [namePart, tag] = withoutDigest.split(':')
+  if (!namePart) return null
+
+  const segments = namePart.split('/').filter(Boolean)
+  if (segments.length === 1) {
+    return { namespace: 'library', repository: segments[0], tag }
+  }
+  if (segments.length === 2) {
+    return { namespace: segments[0], repository: segments[1], tag }
+  }
+  return null
+}
+
+async function fetchDockerPullCount(image: string): Promise<{ pulls: number; tag?: string } | null> {
+  const ref = parseDockerImage(image)
+  if (!ref) return null
+
+  const namespace = encodeURIComponent(ref.namespace)
+  const repository = encodeURIComponent(ref.repository)
+
+  const fetchPulls = async (url: string): Promise<number | null> => {
+    const response = await fetch(url)
+    if (!response.ok) return null
+    const data = (await response.json()) as DockerPullResponse
+    return typeof data.pull_count === 'number' ? data.pull_count : null
+  }
+
+  if (ref.tag) {
+    const tag = encodeURIComponent(ref.tag)
+    const tagPulls = await fetchPulls(`${DOCKER_HUB_API}/${namespace}/${repository}/tags/${tag}/`)
+    if (typeof tagPulls === 'number') {
+      return { pulls: tagPulls, tag: ref.tag }
+    }
+  }
+
+  const repoPulls = await fetchPulls(`${DOCKER_HUB_API}/${namespace}/${repository}/`)
+  if (typeof repoPulls !== 'number') return null
+  return { pulls: repoPulls, tag: ref.tag }
+}
+
 type ScrapeMode = 'daily' | 'bootstrap'
 
 Deno.serve(async (req) => {
@@ -104,7 +169,7 @@ Deno.serve(async (req) => {
     let projectsQuery = supabase
       .from('projects')
       .select('id, package_name, package_manager, stats_refresh_mode')
-      .eq('package_manager', 'npm')
+      .in('package_manager', ['npm', 'docker'])
 
     if (mode === 'daily') {
       projectsQuery = projectsQuery.eq('stats_refresh_mode', 'daily')
@@ -145,58 +210,137 @@ Deno.serve(async (req) => {
 
     for (const project of projects as Project[]) {
       try {
-        const [dayData, weekData, monthData, yearData] = await Promise.all([
-          fetchNpmDownloads(project.package_name, `${yesterdayStr}:${yesterdayStr}`),
-          fetchNpmDownloads(project.package_name, `${weekAgoStr}:${yesterdayStr}`),
-          fetchNpmDownloads(project.package_name, `${monthAgoStr}:${yesterdayStr}`),
-          fetchNpmDownloads(project.package_name, `${yearAgoStr}:${yesterdayStr}`),
-        ])
+        if (project.package_manager === 'npm') {
+          const [dayData, weekData, monthData, yearData] = await Promise.all([
+            fetchNpmDownloads(project.package_name, `${yesterdayStr}:${yesterdayStr}`),
+            fetchNpmDownloads(project.package_name, `${weekAgoStr}:${yesterdayStr}`),
+            fetchNpmDownloads(project.package_name, `${monthAgoStr}:${yesterdayStr}`),
+            fetchNpmDownloads(project.package_name, `${yearAgoStr}:${yesterdayStr}`),
+          ])
 
-        const { error: statsError } = await supabase
-          .from('download_stats')
-          .upsert({
-            project_id: project.id,
-            date: todayStr,
-            downloads_day: dayData?.downloads ?? 0,
-            downloads_week: weekData?.downloads ?? 0,
-            downloads_month: monthData?.downloads ?? 0,
-            downloads_year: yearData?.downloads ?? 0,
-            raw_data: {
-              day: dayData,
-              week: weekData,
-              month: monthData,
-              year: yearData,
-            },
-          }, {
-            onConflict: 'project_id,date',
-          })
+          const { error: statsError } = await supabase
+            .from('download_stats')
+            .upsert({
+              project_id: project.id,
+              date: todayStr,
+              downloads_day: dayData?.downloads ?? 0,
+              downloads_week: weekData?.downloads ?? 0,
+              downloads_month: monthData?.downloads ?? 0,
+              downloads_year: yearData?.downloads ?? 0,
+              raw_data: {
+                day: dayData,
+                week: weekData,
+                month: monthData,
+                year: yearData,
+              },
+            }, {
+              onConflict: 'project_id,date',
+            })
 
-        if (statsError) {
-          throw new Error(`Failed to upsert stats: ${statsError.message}`)
+          if (statsError) {
+            throw new Error(`Failed to upsert stats: ${statsError.message}`)
+          }
+
+          const rangeData = await fetchNpmDownloadsRange(
+            project.package_name,
+            historyStartStr,
+            yesterdayStr
+          )
+
+          if (rangeData?.downloads) {
+            const historyRecords = rangeData.downloads.map((d) => ({
+              project_id: project.id,
+              start_date: d.day,
+              end_date: d.day,
+              downloads: d.downloads,
+            }))
+
+            const { error: historyError } = await supabase
+              .from('download_history')
+              .upsert(historyRecords, {
+                onConflict: 'project_id,start_date,end_date',
+              })
+
+            if (historyError) {
+              throw new Error(`Failed to upsert history: ${historyError.message}`)
+            }
+          }
         }
 
-        const rangeData = await fetchNpmDownloadsRange(
-          project.package_name,
-          historyStartStr,
-          yesterdayStr
-        )
+        if (project.package_manager === 'docker') {
+          const pullInfo = await fetchDockerPullCount(project.package_name)
+          if (!pullInfo) {
+            throw new Error('Failed to fetch Docker Hub pull count')
+          }
 
-        if (rangeData?.downloads) {
-          const historyRecords = rangeData.downloads.map((d) => ({
-            project_id: project.id,
-            start_date: d.day,
-            end_date: d.day,
-            downloads: d.downloads,
-          }))
+          const { data: latestStats } = await supabase
+            .from('download_stats')
+            .select('raw_data')
+            .eq('project_id', project.id)
+            .order('date', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          const previousTotal = (latestStats?.raw_data as { pull_count?: number } | null)?.pull_count
+          const downloadsDay =
+            typeof previousTotal === 'number' ? Math.max(pullInfo.pulls - previousTotal, 0) : 0
 
           const { error: historyError } = await supabase
             .from('download_history')
-            .upsert(historyRecords, {
+            .upsert({
+              project_id: project.id,
+              start_date: todayStr,
+              end_date: todayStr,
+              downloads: downloadsDay,
+            }, {
               onConflict: 'project_id,start_date,end_date',
             })
 
           if (historyError) {
             throw new Error(`Failed to upsert history: ${historyError.message}`)
+          }
+
+          const { data: historyRows, error: historyFetchError } = await supabase
+            .from('download_history')
+            .select('start_date, downloads')
+            .eq('project_id', project.id)
+            .gte('start_date', yearAgoStr)
+
+          if (historyFetchError) {
+            throw new Error(`Failed to fetch history: ${historyFetchError.message}`)
+          }
+
+          const totals = {
+            week: 0,
+            month: 0,
+            year: 0,
+          }
+
+          for (const row of historyRows ?? []) {
+            if (row.start_date >= yearAgoStr) totals.year += row.downloads
+            if (row.start_date >= monthAgoStr) totals.month += row.downloads
+            if (row.start_date >= weekAgoStr) totals.week += row.downloads
+          }
+
+          const { error: statsError } = await supabase
+            .from('download_stats')
+            .upsert({
+              project_id: project.id,
+              date: todayStr,
+              downloads_day: downloadsDay,
+              downloads_week: totals.week,
+              downloads_month: totals.month,
+              downloads_year: totals.year,
+              raw_data: {
+                pull_count: pullInfo.pulls,
+                tag: pullInfo.tag,
+              },
+            }, {
+              onConflict: 'project_id,date',
+            })
+
+          if (statsError) {
+            throw new Error(`Failed to upsert stats: ${statsError.message}`)
           }
         }
 

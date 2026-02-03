@@ -6,7 +6,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-export type PackageManagerType = 'npm' | 'nuget' | 'pypi' | 'maven' | 'cargo'
+export type PackageManagerType = 'npm' | 'docker' | 'nuget' | 'pypi' | 'maven' | 'cargo'
 export type StatsRefreshMode = 'pending' | 'daily'
 
 export interface Database {

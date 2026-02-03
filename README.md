@@ -1,3 +1,8 @@
+# WARNING:
+
+This codebase is 100% vibe coded. I've looked at maybe two lines of code.
+Use with caution.
+
 # Package Adoption Tracker
 
 Monitor npm package downloads across your projects and competitors. Track adoption trends, compare organizations, and make data-driven decisions.

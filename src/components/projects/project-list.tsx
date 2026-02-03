@@ -13,9 +13,16 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useProjects, useCreateProject, useDeleteProject } from '@/hooks/use-projects'
 import { useStatsForProjects, useBootstrapProjectStats } from '@/hooks/use-stats'
-import type { Project } from '@/types/database'
+import type { Project, PackageManagerType } from '@/types/database'
 
 interface ProjectListProps {
   organizationId: string
@@ -32,6 +39,7 @@ export function ProjectList({ organizationId }: ProjectListProps) {
   const [newProjectName, setNewProjectName] = useState('')
   const [newPackageUrl, setNewPackageUrl] = useState('')
   const [newDescription, setNewDescription] = useState('')
+  const [newPackageManager, setNewPackageManager] = useState<PackageManagerType>('npm')
   const [bootstrapErrors, setBootstrapErrors] = useState<Record<string, string>>({})
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -40,11 +48,13 @@ export function ProjectList({ organizationId }: ProjectListProps) {
       organizationId,
       name: newProjectName,
       packageUrl: newPackageUrl,
+      packageManager: newPackageManager,
       description: newDescription || undefined,
     })
     setNewProjectName('')
     setNewPackageUrl('')
     setNewDescription('')
+    setNewPackageManager('npm')
     setIsCreateOpen(false)
   }
 
@@ -98,7 +108,7 @@ export function ProjectList({ organizationId }: ProjectListProps) {
             <DialogHeader>
               <DialogTitle>Add Project</DialogTitle>
               <DialogDescription>
-                Add an npm package to track its download statistics
+                Add a package or image to track adoption metrics
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleCreate} className="space-y-4">
@@ -113,16 +123,37 @@ export function ProjectList({ organizationId }: ProjectListProps) {
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="package-manager">Package Manager</Label>
+                <Select
+                  value={newPackageManager}
+                  onValueChange={(value) => setNewPackageManager(value as PackageManagerType)}
+                >
+                  <SelectTrigger id="package-manager" className="w-full">
+                    <SelectValue placeholder="Select a package manager" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="npm">npm</SelectItem>
+                    <SelectItem value="docker">docker hub</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="package-url">Package Name or URL</Label>
                 <Input
                   id="package-url"
                   value={newPackageUrl}
                   onChange={(e) => setNewPackageUrl(e.target.value)}
-                  placeholder="@tanstack/react-query or https://npmjs.com/package/..."
+                  placeholder={
+                    newPackageManager === 'docker'
+                      ? 'namespace/repo:tag or https://hub.docker.com/r/...'
+                      : '@tanstack/react-query or https://npmjs.com/package/...'
+                  }
                   required
                 />
                 <p className="text-xs text-gray-500">
-                  Enter the npm package name or full URL
+                  {newPackageManager === 'docker'
+                    ? 'Enter a Docker Hub image (namespace/repo:tag) or URL'
+                    : 'Enter the npm package name or full URL'}
                 </p>
               </div>
               <div className="space-y-2">
@@ -193,6 +224,19 @@ function ProjectCard({
     return n.toString()
   }
 
+  const resolvePackageUrl = () => {
+    if (!project.package_url) return null
+    if (project.package_url.startsWith('http')) return project.package_url
+
+    if (project.package_manager === 'docker') {
+      const [image, tag] = project.package_name.split(':')
+      const base = `https://hub.docker.com/r/${image}`
+      return tag ? `${base}/tags?name=${encodeURIComponent(tag)}` : base
+    }
+
+    return `https://npmjs.com/package/${project.package_name}`
+  }
+
   return (
     <Card className="hover:border-cyan-500/50 transition-colors">
       <CardHeader className="pb-2">
@@ -202,14 +246,10 @@ function ProjectCard({
             <CardTitle className="text-lg">{project.name}</CardTitle>
           </div>
           <div className="flex gap-1">
-            {project.package_url && (
+            {resolvePackageUrl() && (
               <Button variant="ghost" size="icon" className="h-8 w-8" asChild>
                 <a
-                  href={
-                    project.package_url.startsWith('http')
-                      ? project.package_url
-                      : `https://npmjs.com/package/${project.package_name}`
-                  }
+                  href={resolvePackageUrl() ?? '#'}
                   target="_blank"
                   rel="noopener noreferrer"
                 >

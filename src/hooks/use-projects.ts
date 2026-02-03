@@ -114,6 +114,7 @@ export function useUpdateProject() {
       name?: string
       packageUrl?: string
       description?: string
+      packageManager?: PackageManagerType
     }) => {
       const supabase = getSupabaseClient()
       
@@ -124,7 +125,7 @@ export function useUpdateProject() {
       if (input.name) updateData.name = input.name
       if (input.description !== undefined) updateData.description = input.description
       if (input.packageUrl) {
-        const adapter = getPackageManagerAdapter('npm')
+        const adapter = getPackageManagerAdapter(input.packageManager || 'npm')
         const packageName = adapter.extractPackageName(input.packageUrl)
         if (packageName) {
           updateData.package_name = packageName
