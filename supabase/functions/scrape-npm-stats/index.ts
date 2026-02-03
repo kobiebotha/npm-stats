@@ -282,8 +282,10 @@ Deno.serve(async (req) => {
             .maybeSingle()
 
           const previousTotal = (latestStats?.raw_data as { pull_count?: number } | null)?.pull_count
-          const downloadsDay =
-            typeof previousTotal === 'number' ? Math.max(pullInfo.pulls - previousTotal, 0) : 0
+          const hasBaseline = typeof previousTotal === 'number'
+          const downloadsDay = hasBaseline
+            ? Math.max(pullInfo.pulls - previousTotal, 0)
+            : pullInfo.pulls
 
           const { error: historyError } = await supabase
             .from('download_history')
@@ -291,7 +293,7 @@ Deno.serve(async (req) => {
               project_id: project.id,
               start_date: todayStr,
               end_date: todayStr,
-              downloads: downloadsDay,
+              downloads: pullInfo.pulls,
             }, {
               onConflict: 'project_id,start_date,end_date',
             })
@@ -305,21 +307,29 @@ Deno.serve(async (req) => {
             .select('start_date, downloads')
             .eq('project_id', project.id)
             .gte('start_date', yearAgoStr)
+            .order('start_date', { ascending: true })
 
           if (historyFetchError) {
             throw new Error(`Failed to fetch history: ${historyFetchError.message}`)
           }
 
-          const totals = {
-            week: 0,
-            month: 0,
-            year: 0,
+          const computeDelta = (rows: Array<{ start_date: string; downloads: number }>) => {
+            if (rows.length === 0) return 0
+            if (rows.length === 1) return rows[0].downloads
+            const first = rows[0].downloads
+            const last = rows[rows.length - 1].downloads
+            return Math.max(last - first, 0)
           }
 
-          for (const row of historyRows ?? []) {
-            if (row.start_date >= yearAgoStr) totals.year += row.downloads
-            if (row.start_date >= monthAgoStr) totals.month += row.downloads
-            if (row.start_date >= weekAgoStr) totals.week += row.downloads
+          const rows = historyRows ?? []
+          const rowsWeek = rows.filter((row) => row.start_date >= weekAgoStr)
+          const rowsMonth = rows.filter((row) => row.start_date >= monthAgoStr)
+          const rowsYear = rows.filter((row) => row.start_date >= yearAgoStr)
+
+          const totals = {
+            week: computeDelta(rowsWeek),
+            month: computeDelta(rowsMonth),
+            year: computeDelta(rowsYear),
           }
 
           const { error: statsError } = await supabase
@@ -334,6 +344,7 @@ Deno.serve(async (req) => {
               raw_data: {
                 pull_count: pullInfo.pulls,
                 tag: pullInfo.tag,
+                baseline: !hasBaseline,
               },
             }, {
               onConflict: 'project_id,date',
