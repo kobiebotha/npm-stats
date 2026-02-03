@@ -102,38 +102,46 @@ function AnalyticsPage() {
               ))}
             </div>
           )}
-          {projects && projects.length > 0 && (
-            <div className="mt-6 space-y-3">
-              <div className="flex items-center justify-between gap-4 flex-wrap">
-                <span className="text-sm text-gray-400">Filter Projects</span>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={selectAllProjects}>
-                    Select all
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={clearProjects}>
-                    Clear
-                  </Button>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {projects.map((project) => {
-                  const isActive = activeProjectIds.includes(project.id)
-                  return (
-                    <Button
-                      key={project.id}
-                      variant={isActive ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => toggleProject(project.id)}
-                    >
-                      {project.name}
-                    </Button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
         </CardContent>
       </Card>
+
+      {projects && projects.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Filter Projects</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <span className="text-sm text-gray-400">
+                Showing {activeProjectIds.length} of {projects.length} projects
+              </span>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={selectAllProjects}>
+                  Select all
+                </Button>
+                <Button variant="outline" size="sm" onClick={clearProjects}>
+                  Clear
+                </Button>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {projects.map((project) => {
+                const isActive = activeProjectIds.includes(project.id)
+                return (
+                  <Button
+                    key={project.id}
+                    variant={isActive ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => toggleProject(project.id)}
+                  >
+                    {project.name}
+                  </Button>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {activeProjects.length > 0 ? (
         <>
