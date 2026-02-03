@@ -136,3 +136,4 @@ Pre-configured demo keys in `.env.example` work with the local Docker setup.
 Get your keys from the Supabase Dashboard → Settings → API:
 - **Anon Key**: Safe to expose in frontend
 - **Service Role Key**: Only for Edge Functions (never expose in frontend)
+
