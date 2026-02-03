@@ -181,7 +181,10 @@ export function DownloadsChart({
             borderRadius: '8px',
           }}
           labelStyle={{ color: '#fff' }}
-          formatter={(value: number) => [formatNumber(value), '']}
+          formatter={(value: number, name?: string) => [
+            formatNumber(value),
+            name ?? '',
+          ]}
           labelFormatter={formatDate}
         />
         <Legend />
