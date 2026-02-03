@@ -285,7 +285,7 @@ Deno.serve(async (req) => {
           const hasBaseline = typeof previousTotal === 'number'
           const downloadsDay = hasBaseline
             ? Math.max(pullInfo.pulls - previousTotal, 0)
-            : pullInfo.pulls
+            : 0
 
           const { error: historyError } = await supabase
             .from('download_history')
@@ -314,8 +314,7 @@ Deno.serve(async (req) => {
           }
 
           const computeDelta = (rows: Array<{ start_date: string; downloads: number }>) => {
-            if (rows.length === 0) return 0
-            if (rows.length === 1) return rows[0].downloads
+            if (rows.length < 2) return 0
             const first = rows[0].downloads
             const last = rows[rows.length - 1].downloads
             return Math.max(last - first, 0)

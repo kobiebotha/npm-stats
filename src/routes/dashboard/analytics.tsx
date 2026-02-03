@@ -19,6 +19,7 @@ export const Route = createFileRoute('/dashboard/analytics')({
 function AnalyticsPage() {
   const { data: organizations } = useOrganizations()
   const [selectedOrgIds, setSelectedOrgIds] = useState<string[]>([])
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[] | null>(null)
   const [showTrendlines, setShowTrendlines] = useState(true)
 
   const today = new Date()
@@ -31,8 +32,12 @@ function AnalyticsPage() {
 
   const { data: projects } = useProjectsByOrganizations(activeOrgIds)
   const projectIds = projects?.map(p => p.id) ?? []
-  const { data: stats } = useStatsForProjects(projectIds)
-  const { data: history } = useDownloadHistoryForProjects(projectIds, startDate, endDate)
+  const activeProjectIds = (selectedProjectIds ?? projectIds).filter((id) =>
+    projectIds.includes(id)
+  )
+  const activeProjects = projects?.filter((p) => activeProjectIds.includes(p.id)) ?? []
+  const { data: stats } = useStatsForProjects(activeProjectIds)
+  const { data: history } = useDownloadHistoryForProjects(activeProjectIds, startDate, endDate)
 
   const handleOrgToggle = (orgId: string) => {
     setSelectedOrgIds(prev => {
@@ -47,6 +52,23 @@ function AnalyticsPage() {
   }
 
   const selectedOrgs = organizations?.filter(o => activeOrgIds.includes(o.id)) ?? []
+
+  const toggleProject = (projectId: string) => {
+    const current = selectedProjectIds ?? projectIds
+    if (current.includes(projectId)) {
+      setSelectedProjectIds(current.filter((id) => id !== projectId))
+      return
+    }
+    setSelectedProjectIds([...current, projectId])
+  }
+
+  const selectAllProjects = () => {
+    setSelectedProjectIds(projectIds)
+  }
+
+  const clearProjects = () => {
+    setSelectedProjectIds([])
+  }
 
   return (
     <div className="space-y-8">
@@ -80,12 +102,42 @@ function AnalyticsPage() {
               ))}
             </div>
           )}
+          {projects && projects.length > 0 && (
+            <div className="mt-6 space-y-3">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <span className="text-sm text-gray-400">Filter Projects</span>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={selectAllProjects}>
+                    Select all
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={clearProjects}>
+                    Clear
+                  </Button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {projects.map((project) => {
+                  const isActive = activeProjectIds.includes(project.id)
+                  return (
+                    <Button
+                      key={project.id}
+                      variant={isActive ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => toggleProject(project.id)}
+                    >
+                      {project.name}
+                    </Button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {projects && projects.length > 0 ? (
+      {activeProjects.length > 0 ? (
         <>
-          <StatsSummary projects={projects} statsByProject={stats ?? {}} />
+          <StatsSummary projects={activeProjects} statsByProject={stats ?? {}} />
 
           <Card>
             <CardHeader>
@@ -112,7 +164,7 @@ function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <DownloadsChart
-                projects={projects}
+                projects={activeProjects}
                 historyByProject={history ?? {}}
                 showTrendlines={showTrendlines}
               />
@@ -122,7 +174,7 @@ function AnalyticsPage() {
           <Separator />
 
           {selectedOrgs.map(org => {
-            const orgProjects = projects.filter(p => p.organization_id === org.id)
+            const orgProjects = activeProjects.filter(p => p.organization_id === org.id)
             if (orgProjects.length === 0) return null
 
             return (

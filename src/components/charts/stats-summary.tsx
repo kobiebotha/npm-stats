@@ -114,11 +114,21 @@ export function ProjectStatsTable({ projects, statsByProject }: ProjectStatsTabl
         <tbody>
           {sortedProjects.map((project) => {
             const stats = statsByProject[project.id]
+            const dockerTotal =
+              project.package_manager === 'docker' &&
+              typeof (stats?.raw_data as { pull_count?: number } | null)?.pull_count === 'number'
+                ? (stats?.raw_data as { pull_count: number }).pull_count
+                : null
             return (
               <tr key={project.id} className="border-b border-gray-800 hover:bg-gray-800/50">
                 <td className="py-3 px-4">
                   <div className="font-medium text-gray-900">{project.name}</div>
                   <div className="text-xs text-gray-500">{project.package_name}</div>
+                  {dockerTotal !== null ? (
+                    <div className="text-xs text-gray-500">
+                      Total pulls: {formatNumber(dockerTotal)}
+                    </div>
+                  ) : null}
                 </td>
                 <td className="text-right py-3 px-4 text-gray-900">
                   {stats ? formatNumber(stats.downloads_day) : '-'}
