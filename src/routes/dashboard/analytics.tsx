@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { format, subDays } from 'date-fns'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -52,6 +52,40 @@ function AnalyticsPage() {
   }
 
   const selectedOrgs = organizations?.filter(o => activeOrgIds.includes(o.id)) ?? []
+
+  const vendorHistory = useMemo(() => {
+    if (!projects || !history) return {}
+
+    const historyByVendor: Record<string, typeof history[string]> = {}
+
+    for (const org of selectedOrgs) {
+      const orgProjects = activeProjects.filter((p) => p.organization_id === org.id)
+      const dateMap = new Map<string, number>()
+
+      for (const project of orgProjects) {
+        const entries = history[project.id] ?? []
+        for (const entry of entries) {
+          const current = dateMap.get(entry.start_date) ?? 0
+          dateMap.set(entry.start_date, current + entry.downloads)
+        }
+      }
+
+      const rows = Array.from(dateMap.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, downloads]) => ({
+          id: `${org.id}-${date}`,
+          project_id: org.id,
+          start_date: date,
+          end_date: date,
+          downloads,
+          created_at: date,
+        }))
+
+      historyByVendor[org.id] = rows
+    }
+
+    return historyByVendor
+  }, [activeProjects, history, projects, selectedOrgs])
 
   const toggleProject = (projectId: string) => {
     const current = selectedProjectIds ?? projectIds
@@ -178,6 +212,36 @@ function AnalyticsPage() {
               />
             </CardContent>
           </Card>
+
+          {selectedOrgs.length > 0 && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <CardTitle>Vendor Trends</CardTitle>
+                  <div className="text-sm text-gray-400">
+                    Aggregated by organization
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <DownloadsChart
+                  projects={selectedOrgs.map((org) => ({
+                    id: org.id,
+                    name: org.name,
+                    organization_id: org.id,
+                    package_name: org.name,
+                    package_manager: 'npm',
+                    package_url: null,
+                    description: null,
+                    created_at: '',
+                    updated_at: '',
+                  }))}
+                  historyByProject={vendorHistory}
+                  showTrendlines={showTrendlines}
+                />
+              </CardContent>
+            </Card>
+          )}
 
           <Separator />
 
