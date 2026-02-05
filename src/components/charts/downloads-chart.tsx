@@ -181,10 +181,10 @@ export function DownloadsChart({
             borderRadius: '8px',
           }}
           labelStyle={{ color: '#fff' }}
-          formatter={(value: number, name?: string) => [
-            formatNumber(value),
-            name ?? '',
-          ]}
+          formatter={(value: number, name?: string) => {
+            if (name?.includes('(trend)')) return null
+            return [formatNumber(value), name ?? '']
+          }}
           labelFormatter={formatDate}
         />
         <Legend />
