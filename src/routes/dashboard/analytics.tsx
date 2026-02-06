@@ -1,30 +1,92 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { format, subDays } from 'date-fns'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
 import { useOrganizations } from '@/hooks/use-organizations'
 import { useProjectsByOrganizations } from '@/hooks/use-projects'
 import { useStatsForProjects, useDownloadHistoryForProjects } from '@/hooks/use-stats'
+import { useSavedViews, useCreateSavedView } from '@/hooks/use-saved-views'
 import { DownloadsChart } from '@/components/charts/downloads-chart'
 import { StatsSummary, ProjectStatsTable } from '@/components/charts/stats-summary'
-import { DateRangePicker } from '@/components/charts/date-range-picker'
+import { DateRangePicker, type PresetRange } from '@/components/charts/date-range-picker'
+import type { SavedViewConfig } from '@/types/database'
+import { Save } from 'lucide-react'
+
+interface AnalyticsSearch {
+  viewId?: string
+}
 
 export const Route = createFileRoute('/dashboard/analytics')({
   component: AnalyticsPage,
+  validateSearch: (search: Record<string, unknown>): AnalyticsSearch => ({
+    viewId: typeof search.viewId === 'string' ? search.viewId : undefined,
+  }),
 })
 
 function AnalyticsPage() {
+  const { viewId } = Route.useSearch()
   const { data: organizations } = useOrganizations()
+  const { data: savedViews } = useSavedViews()
+  const createSavedView = useCreateSavedView()
   const [selectedOrgIds, setSelectedOrgIds] = useState<string[]>([])
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[] | null>(null)
   const [showTrendlines, setShowTrendlines] = useState(true)
+  const [datePreset, setDatePreset] = useState<PresetRange>('90d')
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false)
+  const [viewName, setViewName] = useState('')
+  const appliedViewId = useRef<string | undefined>(undefined)
 
   const today = new Date()
   const [startDate, setStartDate] = useState(format(subDays(today, 90), 'yyyy-MM-dd'))
   const [endDate, setEndDate] = useState(format(today, 'yyyy-MM-dd'))
+
+  useEffect(() => {
+    if (!viewId || !savedViews || appliedViewId.current === viewId) return
+    const view = savedViews.find(v => v.id === viewId)
+    if (!view) return
+    const config = view.config as unknown as SavedViewConfig
+    setSelectedOrgIds(config.selectedOrgIds ?? [])
+    setSelectedProjectIds(config.selectedProjectIds ?? null)
+    setShowTrendlines(config.showTrendlines ?? true)
+    setDatePreset((config.dateRangePreset as PresetRange) ?? '90d')
+    setStartDate(config.startDate)
+    setEndDate(config.endDate)
+    appliedViewId.current = viewId
+  }, [viewId, savedViews])
+
+  const handleSaveView = () => {
+    if (!viewName.trim()) return
+    const config: SavedViewConfig = {
+      selectedOrgIds,
+      selectedProjectIds,
+      dateRangePreset: datePreset,
+      startDate,
+      endDate,
+      showTrendlines,
+    }
+    createSavedView.mutate(
+      { name: viewName.trim(), config },
+      {
+        onSuccess: () => {
+          setSaveDialogOpen(false)
+          setViewName('')
+        },
+      }
+    )
+  }
 
   const activeOrgIds = selectedOrgIds.length > 0 
     ? selectedOrgIds 
@@ -103,10 +165,56 @@ function AnalyticsPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-white mb-2">Analytics</h1>
-        <p className="text-gray-400">Deep dive into package adoption trends</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-2">Analytics</h1>
+          <p className="text-gray-400">Deep dive into package adoption trends</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setSaveDialogOpen(true)}
+        >
+          <Save className="w-4 h-4 mr-2" />
+          Save View
+        </Button>
       </div>
+
+      <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save View</DialogTitle>
+            <DialogDescription>
+              Save the current filter configuration as a named view for quick access.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="view-name">View Name</Label>
+              <Input
+                id="view-name"
+                value={viewName}
+                onChange={(e) => setViewName(e.target.value)}
+                placeholder="e.g. ElectricSQL vs Rocicorp"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveView()
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSaveDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveView}
+              disabled={!viewName.trim() || createSavedView.isPending}
+            >
+              {createSavedView.isPending ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader>
@@ -190,6 +298,8 @@ function AnalyticsPage() {
                       setStartDate(start)
                       setEndDate(end)
                     }}
+                    value={datePreset}
+                    onPresetChange={setDatePreset}
                   />
                   <Button
                     variant={showTrendlines ? 'default' : 'outline'}

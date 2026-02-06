@@ -114,6 +114,32 @@ export interface Database {
           created_at?: string
         }
       }
+      saved_views: {
+        Row: {
+          id: string
+          name: string
+          config: Json
+          created_by: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          config: Json
+          created_by: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          config?: Json
+          created_by?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
       download_history: {
         Row: {
           id: string
@@ -158,3 +184,13 @@ export type Organization = Database['public']['Tables']['organizations']['Row']
 export type Project = Database['public']['Tables']['projects']['Row']
 export type DownloadStats = Database['public']['Tables']['download_stats']['Row']
 export type DownloadHistory = Database['public']['Tables']['download_history']['Row']
+export type SavedView = Database['public']['Tables']['saved_views']['Row']
+
+export interface SavedViewConfig {
+  selectedOrgIds: string[]
+  selectedProjectIds: string[] | null
+  dateRangePreset: string
+  startDate: string
+  endDate: string
+  showTrendlines: boolean
+}

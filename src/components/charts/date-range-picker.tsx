@@ -9,16 +9,24 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
+export type PresetRange = '7d' | '30d' | '90d' | '1y' | 'all' | 'custom'
+
 interface DateRangePickerProps {
   startDate: string
   endDate: string
   onRangeChange: (start: string, end: string) => void
+  value?: PresetRange
+  onPresetChange?: (preset: PresetRange) => void
 }
 
-type PresetRange = '7d' | '30d' | '90d' | '1y' | 'all' | 'custom'
+export function DateRangePicker({ startDate, endDate, onRangeChange, value, onPresetChange }: DateRangePickerProps) {
+  const [internalPreset, setInternalPreset] = useState<PresetRange>('30d')
+  const preset = value ?? internalPreset
 
-export function DateRangePicker({ startDate, endDate, onRangeChange }: DateRangePickerProps) {
-  const [preset, setPreset] = useState<PresetRange>('30d')
+  const setPreset = (v: PresetRange) => {
+    setInternalPreset(v)
+    onPresetChange?.(v)
+  }
 
   const handlePresetChange = (value: PresetRange) => {
     setPreset(value)

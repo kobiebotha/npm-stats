@@ -68,6 +68,14 @@ export function useAuth() {
   }, [])
 
   const signUp = useCallback(async (email: string, password: string) => {
+    const allowedDomains = ['powersync.com', 'journeyapps.com']
+    const emailDomain = email.split('@')[1]?.toLowerCase()
+    if (!emailDomain || !allowedDomains.includes(emailDomain)) {
+      const errorMsg = 'Signups are restricted to @powersync.com and @journeyapps.com email addresses'
+      setState((s) => ({ ...s, loading: false, error: errorMsg }))
+      return { error: { message: errorMsg } }
+    }
+
     const supabase = getSupabaseClient()
     setState((s) => ({ ...s, loading: true, error: null }))
 

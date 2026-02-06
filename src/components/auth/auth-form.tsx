@@ -34,7 +34,7 @@ export function AuthForm() {
         <CardTitle>{isSignUp ? 'Create Account' : 'Sign In'}</CardTitle>
         <CardDescription>
           {isSignUp
-            ? 'Create an account to start tracking package adoption'
+            ? 'Only @powersync.com and @journeyapps.com emails are allowed'
             : 'Sign in to your account to view your dashboard'}
         </CardDescription>
       </CardHeader>
@@ -45,7 +45,7 @@ export function AuthForm() {
             <Input
               id="email"
               type="email"
-              placeholder="you@example.com"
+              placeholder={isSignUp ? 'you@powersync.com' : 'you@example.com'}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
