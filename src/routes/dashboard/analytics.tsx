@@ -44,9 +44,6 @@ function AnalyticsPage() {
       if (prev.includes(orgId)) {
         return prev.filter(id => id !== orgId)
       }
-      if (prev.length >= 3) {
-        return [...prev.slice(1), orgId]
-      }
       return [...prev, orgId]
     })
   }
